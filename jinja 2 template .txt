@@ -1,0 +1,19 @@
+Template is kinda files we store custom config files
+but values are dynamic 
+
+let say we have a cinfig file httpd we need the port value is dynamic
+
+we create a temlate file config.j2 we pout custom configuration and in port we put {{server_port}} #variable
+
+now in task we call this template for the httpd we build
+
+task:
+ name : buildt hhtpd
+
+ name: config file
+ template: 
+ src: /home/config.j2 #call the template file we created using.j2
+ des: /etc/httpd/config
+
+ var:
+ server_port: 89 # we give value for the port that could be dynamic now

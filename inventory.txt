@@ -67,3 +67,5 @@ win1 ansible_host=10.0.0.200 ansible_user=Administrator
 
 ansible -i invent.ini -m ping linux
 ansible -i invent.ini -m ping windows --calling only respective server the that group
+
+When we want to limit the deployement for particular grp use --limit flage and add grp name so that grp server only got deployed with he playbook taks.

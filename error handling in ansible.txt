@@ -1,0 +1,64 @@
+#Error handling in ansible
+     
+# We can use ignore_error: yes cmd in playbook to skip and do next task in playbook even if any config is not satisfy or already exist
+
+#In ansible if a config ir already there like 
+
+#we gonna say check - for docker version if machine is not there it throws error and task will stop wont go to next one
+
+#also if one machine it is suceed for next task that succes mahcine will get aplied not the error one
+
+#So to avoid this we can use ignore_error
+
+#this will ignore if it is error nd make the machine to apply the next task
+
+#Now taks is check open ssh open ssl is in latest and docker is install if not install the docker for not installed machines
+
+---
+- hosts: all
+  become: true 
+  
+  tasks:
+   -name:"Check for docker"
+    ansible.builtin.apt: 
+    name: {{item}}
+    state: latest
+    ignore_error: yes
+    loops:
+     -openssl    #this will lopp the package and check if the package is latest if not it will ignore nd make the machine to allow apply to next task
+     -OpenSSH
+   -name:"Check for docker"
+    ansible.builtin.command: docker --version
+    register: output  # Register will takes the output of the above task and store it in a var we given (output is the var used)
+    ignore_error: yes # if doacker is not installed for the machine ignore and do next 
+    -ansibile.builtin.debug  #from debug of the output of docker version check cmnd we can see the the docker is not there so in failed fiel it will in true
+     var: output
+
+    -name: "Install docker"
+    ansible.builtin.apt
+    name: docker
+    state: present
+    when:
+     output.failed == true # this will check the condition from the output of the docker veriosn check from there if failed that is docker version is not is true for that machine it will install.
+
+# failed_when concept
+# By default, Ansible marks a task as failed when the command returns a non-zero
+# return code. The failed_when keyword lets us define our own condition for
+# deciding whether a task should be marked as failed.
+#
+# Example: check that the Docker version command returns the expected output.
+# The task is failed if "Docker version" is not present in stdout.
+#
+# - name: Check Docker version output
+#   ansible.builtin.command: docker --version
+#   register: docker_check
+#   failed_when: "'Docker version' not in docker_check.stdout"
+#
+# The result is saved in docker_check, so later tasks can inspect values such
+# as docker_check.stdout, docker_check.rc, and docker_check.failed.
+# failed_when does not install Docker or automatically skip a task; it only
+# controls whether this task is reported as failed. Use ignore_errors: true
+# when you specifically want Ansible to continue after a task is marked failed.
+
+
+     
