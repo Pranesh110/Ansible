@@ -1,0 +1,255 @@
+Ansible roles: structure and usage
+==================================
+
+An Ansible role is a reusable way to organize automation for one component, such as a web server, database, or application. A role keeps related tasks, variables, handlers, and files together so multiple playbooks can use the same automation.
+
+Create a role
+-------------
+
+Run from the Ansible project directory:
+
+  ansible-galaxy role init webserver
+
+This creates a role skeleton similar to:
+
+  project/
+  |-- ansible.cfg
+  |-- inventory.ini
+  |-- site.yml
+  `-- roles/
+      `-- webserver/
+          |-- defaults/
+          |   `-- main.yml
+          |-- files/
+          |-- handlers/
+          |   `-- main.yml
+          |-- meta/
+          |   `-- main.yml
+          |-- tasks/
+          |   `-- main.yml
+          |-- templates/
+          |-- tests/
+          |   |-- inventory
+          |   `-- test.yml
+          |-- vars/
+          |   `-- main.yml
+          `-- README.md
+
+Role folders and files
+----------------------
+
+- tasks/main.yml: The role's default entry point. Put the ordered tasks here. A role can also have other task files, which can be included from main.yml or selected with tasks_from.
+- handlers/main.yml: Handlers that tasks can notify when they report a change. Handlers usually restart or reload a service and run at the end of the play unless flushed.
+- defaults/main.yml: Default values for role variables. These have low precedence and are intended to be easy to override in inventory or the playbook.
+- vars/main.yml: Role variables that should generally be fixed for the role. These have higher precedence than defaults, so inventory and playbook overrides may not replace them as expected.
+- files/: Static files copied to managed hosts, for example with ansible.builtin.copy. They are not rendered as templates.
+- templates/: Jinja2 files rendered on the control node before being sent to managed hosts with ansible.builtin.template.
+- meta/main.yml: Role metadata such as author, supported platforms, and role dependencies. Dependencies can cause other roles to run first.
+- tests/: Optional files for testing the role. Ansible does not automatically run these tests when a playbook uses the role.
+- README.md: Documentation for the role; it is a file, not a role directory.
+
+The main.yml files are conventional entry points for their respective folders. Keep optional content in these folders only when the role needs it.
+
+Variables in a role
+-------------------
+
+Variables let a role reuse the same tasks with different values, such as package names, ports, paths, and service settings. Reference a variable with Jinja2 braces and quotes, for example "{{ webserver_package }}".
+
+1. Role defaults: put configurable values in roles/webserver/defaults/main.yml. These are role defaults and are easy to override:
+
+  ---
+  webserver_package: httpd
+  webserver_service: httpd
+  webserver_document_root: /var/www/html
+  webserver_port: 80
+
+2. Role vars: put values that users are not normally expected to change in roles/webserver/vars/main.yml. Variables here have higher precedence than defaults and can be harder to override:
+
+  ---
+  webserver_config_file: /etc/httpd/conf/httpd.conf
+
+3. Inventory variables: set per-group or per-host values in group_vars/ or host_vars/. For example, project/group_vars/web.yml:
+
+  ---
+  webserver_port: 8080
+
+Variables for the web group override the role default for hosts in that group. Keep environment-specific settings in inventory when they differ between development, test, and production.
+
+4. Role parameters: pass values for one role call in the playbook:
+
+  roles:
+    - role: webserver
+      vars:
+        webserver_port: 8081
+
+Values passed as role parameters are useful when the same role is called more than once with different settings. Extra variables passed with -e/--extra-vars have the highest precedence and can override other variable sources.
+
+Use the variables in roles/webserver/tasks/main.yml:
+
+  - name: Install the selected web-server package
+    ansible.builtin.dnf:
+      name: "{{ webserver_package }}"
+      state: present
+
+  - name: Allow the selected HTTP port in the configuration
+    ansible.builtin.lineinfile:
+      path: "{{ webserver_config_file }}"
+      regexp: "^Listen "
+      line: "Listen {{ webserver_port }}"
+
+Then pass a different default at runtime, if needed:
+
+  ansible-playbook -i inventory.ini site.yml -e "webserver_port=8082"
+
+Use defaults for settings that should be simple to customize, and vars for internal role values that should normally remain fixed. Avoid putting passwords or other secrets in plain-text variable files; use Ansible Vault for sensitive values.
+
+Example role files
+------------------
+
+roles/webserver/defaults/main.yml:
+
+  ---
+  webserver_package: httpd
+  webserver_service: httpd
+  webserver_document_root: /var/www/html
+  webserver_index_source: index.html
+
+roles/webserver/tasks/main.yml:
+
+  ---
+  - name: Install the web server
+    ansible.builtin.dnf:
+      name: "{{ webserver_package }}"
+      state: present
+
+  - name: Ensure the web server is enabled and running
+    ansible.builtin.service:
+      name: "{{ webserver_service }}"
+      state: started
+      enabled: true
+
+  - name: Copy the web page
+    ansible.builtin.copy:
+      src: "{{ webserver_index_source }}"
+      dest: "{{ webserver_document_root }}/index.html"
+      owner: root
+      group: root
+      mode: "0644"
+
+The copy module looks for a relative source file in roles/webserver/files/. For example, place the static page at roles/webserver/files/index.html. Use the template module and a file in templates/ instead when the content needs Jinja2 variable substitution.
+
+Call the role from the main playbook
+------------------------------------
+
+In project/site.yml:
+
+  ---
+  - name: Configure web servers
+    hosts: web
+    become: true
+    roles:
+      - webserver
+
+With the conventional project layout above, Ansible finds the role under roles/ automatically. Run the main playbook from the project directory:
+
+  ansible-playbook -i inventory.ini site.yml
+
+The role applies to every host in the play's web group. The become setting elevates role tasks too. Role defaults can be overridden for this play:
+
+  ---
+  - name: Configure web servers
+    hosts: web
+    become: true
+    roles:
+      - role: webserver
+        vars:
+          webserver_package: httpd
+          webserver_index_source: custom-index.html
+
+Other ways to include a role
+----------------------------
+
+Use roles: at the play level for the common, straightforward case. To call a role from the tasks list, use one of these:
+
+  tasks:
+    - name: Include the webserver role dynamically
+      ansible.builtin.include_role:
+        name: webserver
+
+  tasks:
+    - name: Import the webserver role statically
+      ansible.builtin.import_role:
+        name: webserver
+
+include_role is processed dynamically at runtime; import_role is expanded statically when Ansible parses the playbook. Use the play-level roles: form unless a task-level include or import is needed for conditional, ordered, or otherwise task-specific role execution.
+
+Optional plugin directories
+---------------------------
+
+Roles may also contain plugin directories when they provide custom Ansible plugins. These are not needed for ordinary task, file, and template roles:
+
+- library/: Custom modules.
+- module_utils/: Shared Python code for custom modules or plugins.
+- action_plugins/, callback_plugins/, connection_plugins/, filter_plugins/, lookup_plugins/, strategy_plugins/, and vars_plugins/: Custom plugins of the corresponding type.
+
+These plugins affect Ansible behavior and should be added only when the role needs them. module_defaults is not a standard role folder; it is a play/task keyword for setting default module parameters.
+
+
+
+README.md  defaults  files  handlers  meta  tasks  templates  tests  vars
+[ec2-user@ip-10-0-0-190 httpd]$ cat handlers/main.yml
+---
+# handlers file for httpd
+handlers:
+  -name: restart httpd
+   ansible.builtin.service:
+   name: httpd
+   state: restarted
+[ec2-user@ip-10-0-0-190 httpd]$ cat vars/main.yml
+---
+# vars file for httpd
+source: files/index.html
+destination: /var/www/html
+
+[ec2-user@ip-10-0-0-190 httpd]$ cat defaults/main.yml
+---
+# defaults file for httpd
+service_package: httpd
+service_name: httpd
+[ec2-user@ip-10-0-0-190 httpd]$
+
+
+
+[ec2-user@ip-10-0-0-190 ansible]$ cat http.yaml
+
+---
+- name: Configure Apache web server
+  hosts: Linux
+  become: true
+  roles:
+    - httpd
+[ec2-user@ip-10-0-0-190 ansible]$ cat httpd/tasks/main.yml
+---
+# tasks file for httpd
+- name: Install httpd
+  ansible.builtin.dnf:
+    name: '{{service_package}}'
+    state: present
+    update_cache: yes
+
+- name: Enable the service
+  ansible.builtin.service:
+    name: '{{service_name}}'
+    state: started
+    enabled: yes
+
+- name: Copy the index.html
+  ansible.builtin.copy:
+    src: '{{source}}'
+    dest: '{{destination}}'
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart httpd
+[ec2-user@ip-10-0-0-190 ansible]$
+

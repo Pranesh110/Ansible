@@ -1,0 +1,130 @@
+#Create a Three ec2 vm 2 is ubuntu one is centos and use passwordless and do auto shutdown for ubuntu machien
+
+#Create a vault to store the ak sk key
+
+#ansible-vault create aws_key.yml
+
+#create a role ansible-galazxy role init ec2_creation
+
+#set var for ec2
+
+#[ec2-user@ip-10-0-0-190 vars]$ cat main.yml
+#---
+# vars file for ec2_creation
+#key: test
+#amazonlinux: ami-04394a3a96907e9ec
+#ubuntu: ami-01a00762f46d584a1
+#mumbai: ap-south-1
+#sg: ssh-sg
+#type: t2.micro
+
+
+#Now create a task of 3 instance
+- name: "start an instance with a public IP address"
+  amazon.aws.ec2_instance:
+      name: "public-compute-instance"
+      key_name: "test"
+      vpc_subnet_id: subnet-0fd2c841764ba6d5d
+      instance_type: t2.micro
+      security_group: ssh-sg
+      network_interfaces:
+       - assign_public_ip: true
+      image_id: {{item}} #to call the loop value but use only item word if that values is for only on var lik here is imageid
+      region: ap-south-1
+      aws_access_key: {{access_key}}
+      aws_secret_key: {{sereat_key}}
+# We would be needing three machine now we use LOOPING use -loop 
+  loop:
+   - ami-04394a3a96907e9ec #centos
+   - ami-04394a3a96907e9ec #centos
+   - ami-01a00762f46d584a1 #ubuntu
+#but this will create two machine only as ansible wont create a same config machine another time
+
+#to avoid this we diff it with name
+
+#so in loop we have both image id and specific name to create and call that loop value using item.name item.image
+
+- name: "start an instance with a public IP address"
+  amazon.aws.ec2_instance:
+      name: "{{item.name}}"
+      key_name: "{{key}}"
+      vpc_subnet_id: subnet-0fd2c841764ba6d5d
+      instance_type: "{{type}}"
+      security_group: "{{sg}}"
+      network_interfaces:
+       - assign_public_ip: true
+      image_id: "{{item.image}}" #to call the loop value but use only item word if that values is for only on var lik here is imageid
+      region: "{{mumbai}}"
+      aws_access_key: "{{access_key}}"
+      aws_secret_key: "{{screat_key}}"
+# We would be needing three machine now we use LOOPING use -loop 
+      loop:
+       - { image: "{{amazonlinux}}", name: "amazonlinux_machine" }
+       - { image: "{{ubuntu}}", name: "ubuntu1" }
+       - { image: "{{ubuntu}}", name: "ubuntu2" }
+
+# now create a playbook
+---
+ - name: "ec2"
+   hosts: localhost
+   connection: local
+   roles:
+    - ec2_creation
+# ansible-playbook ansible-playbook create-ec2.yml \
+ # -e @aws-secrets.yml \
+ # --ask-vault-pass
+
+ #Now do passwordless and add those machine in INI file
+
+ #now do auto shutdown for ubuntu instance only
+
+---
+- hosts: "ubuntu"
+  become: true
+
+  tasks:
+    - name: "shutdown ubuntu only"
+      ansible.builtin.command: /sbin/shutdown -t now #this will do shutdown of the machine
+# now if wwe do this all the machine will shutdown now to shutdown only ubuntu we use WHEN condition
+      when:
+       ansible.facts['os.family']== "Debian"
+
+#whats this ansible facts it is when we do run the plabook first thing ansible do is Gathering facts of that ini machine it whates os .
+#gather facte collects: OS 
+
+
+---
+- name: Auto shutdown playbook
+  hosts: linux
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Print gather facts
+      ansible.builtin.debug:   
+        var: ansible_facts  #this prints what and all the gather facts collect from machines
+
+    - name: Shutdown the server
+      ansible.builtin.command: /sbin/shutdown -h now
+      When:
+       ansible.facts['os_fmaily']== "Debian"
+
+
+- name: Auto shutdown playbook
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+#    - name: Print gather facts
+#      ansible.builtin.debug:
+#        var: ansible_facts
+#this peints the ansible what and all gathered from the machine
+     - name: "Shutdown of ubuntu"
+       ansible.builtin.command: /sbin/shutdown -t now
+       when:
+        ansible_facts['os_family']== "Debian"
+
+
+
+

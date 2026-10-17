@@ -1,0 +1,25 @@
+Ansible is an open-source automation tool used for configuration management, application deployment, orchestration, and infrastructure provisioning. It helps system administrators and DevOps engineers manage servers and environments consistently without manually logging into each machine and running commands one by one.
+
+At its core, Ansible focuses on configuration management. It allows you to define the desired state of your systems using simple YAML files called playbooks. These playbooks describe what should be installed, configured, and running on servers. Ansible then connects to the target machines, executes the required tasks, and ensures the system matches the declared state.
+
+One of Ansible's biggest advantages is its simplicity. Unlike many automation tools that require agents to be installed on managed nodes, Ansible uses SSH (for Linux systems) or WinRM (for Windows systems) to communicate with remote machines. This reduces setup complexity and makes it easier to manage large environments.
+
+Ansible is commonly used for:
+- Provisioning cloud and virtual machines
+- Configuring servers and applications
+- Deploying software across multiple environments
+- Managing infrastructure as code
+- Automating repetitive operational tasks
+- Supporting CI/CD workflows
+- Automating network devices and security appliances
+
+Key concepts in Ansible include:
+- Inventory: A list of managed hosts
+- Playbooks: YAML files containing automation tasks
+- Modules: Reusable units of work that perform specific actions
+- Roles: A structured way to organize playbooks and related files
+- Tasks: Individual actions executed by Ansible
+- Variables: Dynamic values used to customize behavior
+
+Because Ansible uses human-readable YAML, it is easy to learn and maintain. It is especially useful for teams that want automation with minimal complexity and strong repeatability. In modern IT environments, Ansible plays a major role in making infrastructure more reliable, scalable, and efficient.
+

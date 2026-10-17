@@ -1,0 +1,27 @@
+---
+- name: HTTPD Installation
+  hosts: linux
+  become: true
+  tasks:
+    - name: Install httpd
+      ansible.builtin.dnf:
+        name: httpd
+        state: present
+        update_cache: yes
+
+    - name: Enable the service
+      ansible.builtin.service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Copy the index.html
+      ansible.builtin.copy:
+        src: /home/ec2-user/index.html
+        dest: /var/www/html
+        owner: root
+        group: root
+        mode: 0644
+
+
+        

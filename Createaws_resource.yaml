@@ -1,0 +1,52 @@
+
+#Create a Three ec2 vm 2 is ubuntu one is centos and use passwordless and do auto shutdown for ubuntu machien
+
+Install boto3 
+pip install boto 3
+
+install the amazon module form collections
+
+ansible-galaxy collection install amazon.aws
+
+this will install the req module for aws
+
+We can get the Module and role task things for creation in Galaxy
+
+#Have a AWS AK SK key and add it in a vault Cn 
+---
+- host: localhost
+  connection: local
+  tasks:
+    - name: "start an instance with a public IP address"
+      amazon.aws.ec2_instance:
+       name: "public-compute-instance"
+       key_name: "test"
+       vpc_subnet_id: subnet-0fd2c841764ba6d5d
+       instance_type: t2.micro
+       security_group: ssh-sg
+       network_interfaces:
+        - assign_public_ip: true
+       image_id: ami-04394a3a96907e9ec ami-01a00762f46d584a1
+       region: ap-south-1
+       aws_access_key: {{access_key}}
+       aws_secret_key: {{sereat_key}}
+#Creation of valut by ansible-vault Create an encrypted file:
+#ansible-vault create secrets.yml
+
+#Ansible prompts you to enter and confirm a Vault password. This is the password used to unlock the encrypted file.
+##Your editor opens. Add variables like these:
+#---
+#vault_linux_password: "LinuxLab@2026"
+#vault_db_username: "appuser"
+#vault_db_password: "Database@2026"
+#Save and exit the editor. Ansible saves the file in encrypted form.
+#2. View the encrypted file
+#To view the decrypted contents without permanently decrypting the file:
+#ansible-vault view secrets.yml
+#Enter your Vault password when prompted.
+
+
+#To call this vault when running playbook 
+
+# --- ansible-playbook -i ini ec2.yml --vault-password-file secr.pass
+

@@ -1,0 +1,143 @@
+Ansible Galaxy
+==============
+
+Ansible Galaxy is the online hub for sharing and finding reusable Ansible
+content. You can install community roles and collections from Galaxy, and
+publish your own content so that other Ansible users can install it.
+
+A role is a reusable set of tasks, handlers, defaults, templates, files, and
+metadata. Galaxy roles are identified by namespace and role name, for example:
+
+    geerlingguy.nginx
+
+The namespace usually belongs to the Galaxy user or organization that publishes
+the role. Galaxy also hosts collections, which can package roles together with
+modules, plugins, and other Ansible content. This guide covers roles.
+
+Prerequisites
+-------------
+
+Run Ansible commands on the control node where Ansible is installed. On
+Windows, use a supported Linux environment such as WSL. The `ansible-galaxy`
+command is included with Ansible; check that it is available with:
+
+    ansible-galaxy --version
+
+Install a role
+--------------
+
+Install a role from Galaxy with its namespace and role name:
+
+    ansible-galaxy role install geerlingguy.nginx
+
+By default, roles are installed in a directory such as `~/.ansible/roles`.
+Ansible searches its configured role paths when a playbook uses a role. To
+install a role into a project-local `roles` directory instead:
+
+    ansible-galaxy role install --roles-path ./roles geerlingguy.nginx
+
+You can install a particular published version by adding a comma and version:
+
+    ansible-galaxy role install geerlingguy.nginx,3.1.0
+
+For a project with several dependencies, record them in `requirements.yml`:
+
+    ---
+    - src: geerlingguy.nginx
+      version: "3.1.0"
+
+Install all listed roles with:
+
+    ansible-galaxy role install -r requirements.yml --roles-path ./roles
+
+Keep `requirements.yml` in source control so that other users can install the
+same role dependencies. Choose and pin versions that have been tested with your
+playbook.
+
+Use an installed role in a playbook
+-----------------------------------
+
+Once installed, reference the role in a play. For example, create
+`site.yml`:
+
+    ---
+    - name: Configure web servers
+      hosts: webservers
+      become: true
+      roles:
+        - role: geerlingguy.nginx
+
+Run it with an inventory:
+
+    ansible-playbook -i inventory.ini site.yml
+
+The role's README documents supported variables and usage. Override its
+defaults in the play or inventory as needed. For example, if the role documents
+an `nginx_vhosts` variable, it can be supplied in the play:
+
+    ---
+    - name: Configure web servers
+      hosts: webservers
+      become: true
+      roles:
+        - role: geerlingguy.nginx
+          vars:
+            nginx_vhosts:
+              - listen: "80"
+                server_name: "example.com"
+
+Use the variable names and data structures documented by the specific role;
+they are not universal across roles.
+
+Create and publish your own role
+--------------------------------
+
+1. Create a role skeleton:
+
+       ansible-galaxy role init my_role
+
+   This creates the standard role directories, including `tasks/`, `defaults/`,
+   `handlers/`, `templates/`, `files/`, and `meta/`. Put the role's main tasks
+   in `tasks/main.yml`; provide sensible overridable settings in
+   `defaults/main.yml`.
+
+2. Complete the role for other users:
+   - Add a README explaining what the role does, requirements, variables, and
+     an example playbook.
+   - Fill in `meta/main.yml` with the role's description, author, license,
+     supported platforms, and other applicable Galaxy metadata.
+   - Test the role in a playbook and avoid including secrets or environment-
+     specific configuration.
+
+3. Create a Git repository for the role and push it to GitHub. The repository
+   should contain the role files at its root (for example,
+   `tasks/main.yml`, `defaults/main.yml`, and `meta/main.yml`).
+
+4. Sign in to https://galaxy.ansible.com with your GitHub account. Create or
+   select the namespace under which you are allowed to publish, then import the
+   GitHub repository as a role. Follow Galaxy's current import workflow and
+   grant only the repository access it requests.
+
+
+   use ansible-galaxy import githubname repo the role is there and ---token we can get from galaxy web by loading api token there.
+
+5. After the import succeeds, the role is listed in that Galaxy namespace and
+   can be installed with:
+
+       ansible-galaxy role install your_namespace.my_role
+
+To publish an update, push changes to the GitHub repository and import or sync
+the repository again if needed. Create Git tags for releases (prefer semantic
+version tags such as `1.0.0`); Galaxy can use imported tags as installable role
+versions. Document changes and compatibility in the README.
+
+Publishing notes
+----------------
+
+- Galaxy imports role content from the linked source repository; it is not a
+  substitute for testing the role before release.
+- Publishing a role on Galaxy is different from publishing an Ansible
+  collection. Collections use a collection namespace and name, are built as
+  collection artifacts, and are published with collection-specific commands.
+- Never commit access tokens, passwords, or private keys to the role repository.
+  Do not put credentials in repository URLs or playbook defaults.

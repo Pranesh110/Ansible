@@ -1,0 +1,175 @@
+Ansible Collections
+===================
+
+What is a collection?
+---------------------
+
+An Ansible collection is a package of related, reusable Ansible content. It
+can include modules, plugins, roles, playbooks, documentation, and supporting
+files. Collections are distributed through Ansible Galaxy or another
+collection server, such as a private Automation Hub.
+
+Collections use a fully qualified collection name (FQCN):
+
+    namespace.collection_name
+
+For example, `ansible.posix` is a collection. A module inside that collection
+has a longer name, such as `ansible.posix.firewalld`. FQCNs make it clear which
+collection provides the content and help avoid name conflicts.
+
+Why use collections?
+--------------------
+
+- Group related automation content into a versioned package.
+- Reuse modules, plugins, and roles across different playbooks and projects.
+- Install and upgrade content independently of the Ansible command-line
+  package.
+- Share content publicly on Galaxy or privately through an organization’s
+  collection server.
+
+Install a collection
+--------------------
+
+The `ansible-galaxy` command is included with Ansible. Install a collection by
+specifying its namespace and name:
+
+    ansible-galaxy collection install ansible.posix
+
+Ansible installs collections to a configured collection path. By default,
+this is usually `~/.ansible/collections/ansible_collections`. To install into
+a project-local `collections` directory:
+
+    ansible-galaxy collection install ansible.posix --collections-path ./collections
+
+To see installed collections:
+
+    ansible-galaxy collection list
+
+For repeatable project setup, list dependencies in `requirements.yml`:
+
+    ---
+    collections:
+      - name: ansible.posix
+        version: "1.5.4"
+      - name: community.general
+        version: ">=9.0.0"
+
+Install the listed collections into the project:
+
+    ansible-galaxy collection install -r requirements.yml --collections-path ./collections
+
+Commit the requirements file to source control. Pin tested versions, or use an
+intentional version range, to make project dependencies predictable.
+
+Use a collection in a playbook
+------------------------------
+
+Use a collection's module by writing its FQCN in a task. For example, the
+`ansible.posix.firewalld` module can manage a firewalld rule:
+
+    ---
+    - name: Configure a web server firewall rule
+      hosts: webservers
+      become: true
+      tasks:
+        - name: Allow HTTP traffic
+          ansible.posix.firewalld:
+            service: http
+            permanent: true
+            state: enabled
+            immediate: true
+
+Run the playbook as usual:
+
+    ansible-playbook -i inventory.ini site.yml
+
+The collection must be installed on the control node, and the managed host
+must meet the module's requirements. Check the collection documentation for
+module parameters and supported platforms. For built-in Ansible modules, use
+the `ansible.builtin` FQCN.
+
+You can also declare a collection search path in a play or role with the
+`collections` keyword. However, using FQCNs directly in tasks is generally
+clearer and avoids ambiguity.
+
+Collections can contain roles too. A role inside a collection is referenced
+with its full collection name:
+
+    ---
+    - name: Configure servers with a collection role
+      hosts: webservers
+      roles:
+        - namespace.collection_name.role_name
+
+Create a collection
+-------------------
+
+Create a collection skeleton with:
+
+    ansible-galaxy collection init my_namespace.my_collection
+
+The command creates the collection directory structure. Common locations
+include:
+
+    my_namespace/my_collection/
+      galaxy.yml
+      README.md
+      plugins/
+        modules/
+        inventory/
+        lookup/
+        filter/
+      roles/
+      playbooks/
+      docs/
+      tests/
+
+Add modules, plugins, roles, and playbooks in the relevant directories. The
+root `galaxy.yml` file provides collection metadata, including namespace, name,
+version, authors, readme, description, license, and optional dependencies.
+Update the version whenever preparing a new release; published collection
+versions cannot be overwritten.
+
+Document how to install and use the collection in `README.md`, including
+requirements, examples, supported Ansible versions, and links to issues or
+documentation. Test the content before distributing it.
+
+Build and publish a collection
+------------------------------
+
+1. Create or choose a namespace on the distribution server where you have
+   permission to publish. For Galaxy, sign in at
+   https://galaxy.ansible.com and create or select your namespace.
+2. Create an API token for that server in your Galaxy account. Keep it secret.
+3. Complete and review `galaxy.yml`, especially the namespace, collection
+   name, semantic version, authors, README, and license.
+4. From the collection project directory, build the distributable archive:
+
+       ansible-galaxy collection build
+
+   This creates a `.tar.gz` collection artifact, normally named with the
+   namespace, collection, and version.
+5. Configure the distribution server and API token securely in your Ansible
+   configuration, then publish the built archive:
+
+       ansible-galaxy collection publish my_namespace-my_collection-1.0.0.tar.gz
+
+   Do not commit tokens or other credentials to source control. Avoid typing
+   secrets directly into command arguments, since they may be exposed in
+   command history or process information.
+6. After the upload succeeds, users can install it with:
+
+       ansible-galaxy collection install my_namespace.my_collection
+
+For each release, update the collection version in `galaxy.yml`, test and
+rebuild the archive, then publish the new version. Use semantic versioning and
+include release notes so users can understand changes and compatibility.
+
+Collections and roles
+---------------------
+
+A role is one reusable unit of tasks and related files. A collection is a
+broader distribution package that can contain one or more roles as well as
+modules, plugins, playbooks, and documentation. Use a standalone role when
+that is the unit you need to share; use a collection when you want to version
+and distribute a related set of Ansible content together.

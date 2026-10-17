@@ -1,0 +1,63 @@
+YAML is human readable language which has standare template that is aggred by standards.
+
+YAML SYNTAX:
+
+---  #start with three hypen
+
+String: Hellow,world
+number: 42
+boolean: true
+
+list
+fruites:  #put name of list 
+  -apple   #keep two space and enter -vaule
+  -orange
+
+Dictinary:
+
+person:
+  -name:value
+   age:value
+
+ list of directories
+
+ family:
+  parents:
+  -name: value
+   age: value
+
+  childers:
+  -name: 
+   age: value
+
+
+To install httpd and copy file form local to MN node
+
+---
+
+- hosts: linux
+  become: true
+  tasks:
+    - name: Install httpd
+      ansible.builtin.dnf:
+        name: httpd
+        state: present
+        update_cache: yes
+
+    - name: Enable the service
+      ansible.builtin.service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Copy the index.html
+      ansible.builtin.copy:
+        src: /home/ec2-user/index.html
+        dest: /var/www/html
+        owner: root
+        group: root
+        mode: 0644
+
+
+To run the playbook
+ansible-playbook -i <ini> <playbook name>

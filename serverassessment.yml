@@ -1,0 +1,55 @@
+
+---
+- name: Run Windows Server Assessment and Collect Reports
+  hosts: windows
+  gather_facts: false
+
+  vars:
+    script_source: /home/ec2-user/ansible/serverassessment.ps1
+    remote_script: C:\Windows\Temp\serverassessment.ps1
+    remote_report: C:\Server_Assessment.txt
+    local_report_dir: /home/ec2-user/ansible/reports
+
+  tasks:
+
+    - name: Create reports directory on Control Node
+      ansible.builtin.file:
+        path: "{{ local_report_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Copy PowerShell assessment script to Windows server
+      ansible.windows.win_copy:
+        src: "{{ script_source }}"
+        dest: "{{ remote_script }}"
+
+    - name: Execute PowerShell server assessment
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          & "{{ remote_script }}"
+          if (-not (Test-Path -LiteralPath "{{ remote_report }}")) {
+              throw "Assessment report was not created: {{ remote_report }}"
+          }
+          Write-Output "Assessment completed. Report: {{ remote_report }}"
+
+    - name: Read assessment report from Windows
+      ansible.windows.win_powershell:
+        script: |
+          $path = 'C:\Server_Assessment.txt'
+          if (-not (Test-Path -LiteralPath $path)) {
+              throw "Assessment report not found: $path"
+          }
+          Get-Content -LiteralPath $path -Raw
+      register: assessment_report
+
+    - name: Save assessment report on Control Node
+      ansible.builtin.copy:
+        content: "{{ assessment_report.output[0] }}"
+        dest: "{{ local_report_dir }}/{{ inventory_hostname }}-ServerAssessment.txt"
+        mode: "0644"
+      delegate_to: localhost
+      become: false

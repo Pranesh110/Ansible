@@ -1,0 +1,407 @@
+Ansible ad hoc commands and YAML playbooks
+==========================================
+
+An ad hoc command runs one task against selected managed hosts directly from the control node. It is useful for quick checks and simple, one-time operations. A YAML playbook groups multiple tasks into a repeatable workflow.
+
+Ad hoc command syntax
+---------------------
+
+  ansible <host-pattern> -i <inventory-file> -m <module> -a "<module-arguments>"
+
+- <host-pattern>: hosts or groups from the inventory, such as "web", "server1", or "all".
+- -i: inventory file. It can be omitted when the inventory is configured elsewhere.
+- -m: module to run. If omitted, Ansible uses the command module by default.
+- -a: arguments passed to that module. Arguments depend on the selected module.
+
+Example inventory (inventory.ini):
+
+  [web]
+  web1 ansible_host=192.0.2.21 ansible_user=ansible
+  web2 ansible_host=192.0.2.22 ansible_user=ansible
+
+Common built-in modules and examples
+------------------------------------
+
+These examples cover frequently used ansible.builtin modules; Ansible also has many other built-in and separately distributed collection modules. Most examples below target Linux/Unix hosts. Use a module's documentation for all available options:
+
+  ansible-doc ansible.builtin.<module>
+
+The outputs below are abbreviated examples. Exact fields and values vary by Ansible version, operating system, host, and whether a change was needed. `SUCCESS` means the task ran successfully; `CHANGED` means it modified something; `FAILED` indicates an error.
+
+Connectivity and commands
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ping — Check Ansible connectivity and whether Python is available on a managed Linux/Unix host. This is not an ICMP network ping.
+
+  ansible all -i inventory.ini -m ansible.builtin.ping
+
+  web1 | SUCCESS => {
+      "changed": false,
+      "ping": "pong"
+  }
+
+command — Run a command without a shell. Prefer it for simple commands; pipes, redirects, shell variables, and shell operators are not interpreted.
+
+  ansible web -i inventory.ini -m ansible.builtin.command -a "uptime"
+
+  web1 | CHANGED | rc=0 >>
+  23:10:02 up 12 days, 3:41, 1 user, load average: 0.02, 0.04, 0.01
+
+shell — Run a command through the remote shell when shell features are required. Use it only when needed.
+
+  ansible web -i inventory.ini -m ansible.builtin.shell -a "uptime | tee /tmp/uptime.txt"
+
+  web1 | CHANGED | rc=0 >>
+  23:10:02 up 12 days, 3:41, 1 user, load average: 0.02, 0.04, 0.01
+
+Another shell example (the `sudo` form works, but prefer `--become` for privilege escalation):
+
+  ansible -i inventory.ini -m ansible.builtin.shell -a "sudo yum update" db
+
+  ec2-user@10.0.0.157 | CHANGED | rc=0 >>
+  Dependencies resolved.
+  Nothing to do.
+  Complete!
+
+raw — Run a command over SSH without requiring Python on the managed host. Useful for bootstrapping Python; it does not provide the usual module features.
+
+  ansible all -i inventory.ini -m ansible.builtin.raw -a "python3 --version"
+
+  web1 | CHANGED | rc=0 >>
+  Python 3.11.2
+
+setup — Gather and display host facts such as operating system and IP addresses.
+
+  ansible web -i inventory.ini -m ansible.builtin.setup
+
+  web1 | SUCCESS => {
+      "ansible_facts": {
+          "ansible_distribution": "Ubuntu",
+          "ansible_distribution_version": "24.04",
+          "ansible_hostname": "web1"
+      },
+      "changed": false
+  }
+
+debug — Print a message or value. It is especially useful inside playbooks; the ad hoc form can print a message.
+
+  ansible web -i inventory.ini -m ansible.builtin.debug -a "msg='Checking the web group'"
+
+  web1 | SUCCESS => {
+      "msg": "Checking the web group"
+  }
+
+Files and content
+~~~~~~~~~~~~~~~~~
+
+copy — Copy a file from the control node to managed hosts.
+
+  ansible web -i inventory.ini -m ansible.builtin.copy -a "src=./app.conf dest=/etc/app/app.conf mode=0644" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "dest": "/etc/app/app.conf",
+      "mode": "0644"
+  }
+
+template — Render a Jinja2 template on the control node and copy the result to managed hosts. Variables in the template are normally supplied by inventory or a playbook.
+
+  ansible web -i inventory.ini -m ansible.builtin.template -a "src=./app.conf.j2 dest=/etc/app/app.conf mode=0644" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "dest": "/etc/app/app.conf",
+      "mode": "0644"
+  }
+
+file — Create directories, set permissions, create links, or remove paths. Use state=absent carefully because it deletes the specified path.
+
+  ansible web -i inventory.ini -m ansible.builtin.file -a "path=/var/www/app state=directory mode=0755" --become
+
+  web1 | SUCCESS => {
+      "changed": false,
+      "path": "/var/www/app",
+      "state": "directory"
+  }
+
+lineinfile — Ensure a line is present in a file; useful for a single configuration setting.
+
+  ansible web -i inventory.ini -m ansible.builtin.lineinfile -a "path=/etc/app/app.conf line='PORT=8080' create=true" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "msg": "line added"
+  }
+
+blockinfile — Add or update a marked block of text in a file.
+
+  ansible web -i inventory.ini -m ansible.builtin.blockinfile -a "path=/etc/app/app.conf block='MODE=production' create=true" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "msg": "Block inserted"
+  }
+
+replace — Replace text matching a regular expression in a file.
+
+  ansible web -i inventory.ini -m ansible.builtin.replace -a "path=/etc/app/app.conf regexp='^DEBUG=.*' replace='DEBUG=false'" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "msg": "2 replacements made"
+  }
+
+stat — Return information about a path, such as whether it exists, its type, and its permissions.
+
+  ansible web -i inventory.ini -m ansible.builtin.stat -a "path=/etc/app/app.conf"
+
+  web1 | SUCCESS => {
+      "changed": false,
+      "stat": {
+          "exists": true,
+          "isreg": true,
+          "path": "/etc/app/app.conf",
+          "mode": "0644"
+      }
+  }
+
+find — Find files on managed hosts using path, name pattern, age, and other criteria.
+
+  ansible web -i inventory.ini -m ansible.builtin.find -a "paths=/var/log patterns='*.log' age=7d recurse=true"
+
+  web1 | SUCCESS => {
+      "changed": false,
+      "examined": 18,
+      "matched": 2,
+      "files": [
+          {"path": "/var/log/app.log"},
+          {"path": "/var/log/old-app.log"}
+      ]
+  }
+
+fetch — Copy a file from a managed host back to the control node.
+
+  ansible web -i inventory.ini -m ansible.builtin.fetch -a "src=/var/log/syslog dest=./collected-logs/" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "dest": "./collected-logs/web1/var/log/syslog",
+      "remote": "/var/log/syslog"
+  }
+
+get_url — Download a URL directly onto a managed host.
+
+  ansible web -i inventory.ini -m ansible.builtin.get_url -a "url=https://example.com/app.tar.gz dest=/tmp/app.tar.gz mode=0644"
+
+  web1 | CHANGED => {
+      "changed": true,
+      "dest": "/tmp/app.tar.gz",
+      "status_code": 200
+  }
+
+unarchive — Extract an archive on managed hosts. Use remote_src=true if the archive is already on the managed host.
+
+  ansible web -i inventory.ini -m ansible.builtin.unarchive -a "src=/tmp/app.tar.gz dest=/opt/app remote_src=true" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "dest": "/opt/app",
+      "src": "/tmp/app.tar.gz"
+  }
+
+Packages and services
+~~~~~~~~~~~~~~~~~~~~~
+
+package — Install or remove a package using the managed host's package manager.
+
+  ansible web -i inventory.ini -m ansible.builtin.package -a "name=nginx state=present" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "nginx",
+      "state": "present"
+  }
+
+apt — Manage packages on Debian and Ubuntu hosts. Use update_cache=true to refresh the package index.
+
+  ansible web -i inventory.ini -m ansible.builtin.apt -a "name=nginx state=present update_cache=true" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "nginx",
+      "state": "present"
+  }
+
+dnf — Manage packages on Fedora and other DNF-based hosts.
+
+  ansible web -i inventory.ini -m ansible.builtin.dnf -a "name=nginx state=present" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "nginx",
+      "state": "present"
+  }
+
+service — Start, stop, restart, or enable a service using a service manager.
+
+  ansible web -i inventory.ini -m ansible.builtin.service -a "name=nginx state=started enabled=true" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "nginx",
+      "state": "started"
+  }
+
+systemd_service — Manage systemd services and units on systemd-based hosts.
+
+  ansible web -i inventory.ini -m ansible.builtin.systemd_service -a "name=nginx state=restarted enabled=true" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "nginx",
+      "state": "started",
+      "status": {"ActiveState": "active"}
+  }
+
+Users and scheduled tasks
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+group — Create or remove a group.
+
+  ansible all -i inventory.ini -m ansible.builtin.group -a "name=webapps state=present" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "webapps",
+      "state": "present"
+  }
+
+user — Create, modify, or remove a user. This example creates a user and home directory; it does not set a password.
+
+  ansible all -i inventory.ini -m ansible.builtin.user -a "name=deploy shell=/bin/bash create_home=true state=present" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "name": "deploy",
+      "shell": "/bin/bash",
+      "state": "present"
+  }
+
+cron — Install or remove a scheduled cron job for a user.
+
+  ansible web -i inventory.ini -m ansible.builtin.cron -a "name='Daily app cleanup' minute=0 hour=2 job='/usr/local/bin/cleanup' user=root" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "env": [],
+      "jobs": ["Daily app cleanup"]
+  }
+
+Network, waiting, and reboot
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+uri — Interact with an HTTP endpoint and report the response. For example, check that a website returns HTTP 200.
+
+  ansible web -i inventory.ini -m ansible.builtin.uri -a "url=https://example.com status_code=200"
+
+  web1 | SUCCESS => {
+      "changed": false,
+      "status": 200,
+      "url": "https://example.com"
+  }
+
+wait_for — Wait for a port to become available, a file to appear, or a condition to be met.
+
+  ansible web -i inventory.ini -m ansible.builtin.wait_for -a "port=443 state=started timeout=30"
+
+  web1 | SUCCESS => {
+      "changed": false,
+      "elapsed": 0,
+      "port": 443,
+      "state": "started"
+  }
+
+reboot — Reboot managed hosts and wait for them to return. Use with care, especially when targeting all hosts.
+
+  ansible web -i inventory.ini -m ansible.builtin.reboot -a "reboot_timeout=600" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "elapsed": 35,
+      "rebooted": true
+  }
+
+Version control
+~~~~~~~~~~~~~~~
+
+git — Clone or update a repository on managed hosts. Git must be installed on the managed host.
+
+  ansible web -i inventory.ini -m ansible.builtin.git -a "repo=https://github.com/ansible/ansible-examples.git dest=/opt/ansible-examples" --become
+
+  web1 | CHANGED => {
+      "changed": true,
+      "after": "0123456789abcdef0123456789abcdef01234567",
+      "dest": "/opt/ansible-examples"
+  }
+
+Privilege escalation
+--------------------
+
+Use --become when a task needs elevated privileges (for example, installing packages or changing protected system files). Ansible may prompt for the become password if required:
+
+  ansible web -i inventory.ini -m ansible.builtin.package -a "name=nginx state=present" --become --ask-become-pass
+
+Use --ask-pass only if SSH password authentication is being used. With SSH keys installed, it is usually unnecessary.
+
+Ad hoc commands versus YAML playbooks
+-------------------------------------
+
+- Ad hoc command: one module/task, convenient for quick checks or simple immediate work.
+- YAML playbook: a file containing one or more plays and tasks; better for repeatable, documented, and more complex automation. Playbooks can use variables, handlers, conditionals, and roles.
+
+Example playbook (web.yml):
+
+  ---
+  - name: Install and start the web server
+    hosts: web
+    become: true
+    tasks:
+      - name: Install nginx
+        ansible.builtin.package:
+          name: nginx
+          state: present
+
+      - name: Ensure nginx is running and enabled
+        ansible.builtin.service:
+          name: nginx
+          state: started
+          enabled: true
+
+Run it with:
+
+  ansible-playbook -i inventory.ini web.yml
+
+The module name identifies the operation; its arguments or YAML parameters describe the desired action. Prefer fully qualified module names such as ansible.builtin.copy and use state-based modules (for example, package and service) for repeatable changes.
+
+
+[service commands]
+ansible linux -i inventory.ini -m systemd -a "name=httpd state=started enabled=yes" -b
+Action
+Command Arguments
+Start
+state=started
+
+Stop
+state=stopped
+
+
+Restart
+state=restarted
+
+Reload
+state=reloaded
+
+Enable at boot
+enabled=yes
+
+--become: true is run it with root user

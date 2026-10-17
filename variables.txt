@@ -1,0 +1,415 @@
+Ansible Variables
+=================
+
+What are variables?
+-------------------
+
+Variables let you reuse a playbook while changing values for different hosts,
+environments, applications, or runs. Instead of repeating a value such as a
+package name or port throughout a playbook, define it once and refer to it
+where needed.
+
+Common uses include:
+
+- Setting environment-specific values, such as development and production
+  domains or database endpoints.
+- Supplying package names, service names, ports, file paths, and user names.
+- Selecting task behavior with conditions, loops, or templates.
+- Passing configuration into reusable roles.
+- Capturing the result of a task and using it later.
+
+Variable names may contain letters, numbers, and underscores, and cannot
+begin with a number. Use descriptive names such as `app_port` or
+`web_package_name`; avoid names with hyphens or spaces.
+
+Define and use a variable
+-------------------------
+
+Variables are commonly written as YAML key-value pairs:
+
+    app_name: catalog
+    app_port: 8080
+    app_enabled: true
+
+Reference a variable in a task or template using Jinja2 double braces:
+
+    - name: Ensure the application package is installed
+      ansible.builtin.package:
+        name: "{{ app_package }}"
+        state: present
+
+Quote a Jinja expression when it is the whole YAML value or begins the value:
+
+    config_path: "{{ app_root }}/config.yml"
+
+Ansible variables can also hold lists and dictionaries:
+
+    allowed_ports:
+      - 80
+      - 443
+
+    app_config:
+      port: 8080
+      log_level: info
+
+    # Examples of references:
+    # {{ allowed_ports[0] }}
+    # {{ app_config['port'] }}
+
+Where can variables be declared?
+--------------------------------
+
+1. In a playbook
+~~~~~~~~~~~~~~~~
+
+Use `vars` for values that are specific to a play. These are convenient for
+small examples or play-specific configuration:
+
+    ---
+    - name: Configure the application
+      hosts: app_servers
+      vars:
+        app_package: nginx
+        app_port: 8080
+      tasks:
+        - name: Install the application package
+          ansible.builtin.package:
+            name: "{{ app_package }}"
+            state: present
+
+For larger playbooks, put variables in a separate YAML file and load it with
+`vars_files`:
+
+    ---
+    - name: Configure the application
+      hosts: app_servers
+      vars_files:
+        - vars/application.yml
+      tasks:
+        - name: Show the configured port
+          ansible.builtin.debug:
+            msg: "Application port is {{ app_port }}"
+
+Example `vars/application.yml`:
+
+    app_package: nginx
+    app_port: 8080
+
+2. In inventory: host and group variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Inventory variables let you assign values to a particular host or a group of
+hosts. This is useful when machines or environments need different settings.
+For YAML inventory, variables can be placed under `vars`:
+
+    ---
+    all:
+      children:
+        webservers:
+          vars:
+            app_port: 8080
+          hosts:
+            web01.example.com:
+              app_package: nginx
+        dbservers:
+          vars:
+            app_port: 5432
+          hosts:
+            db01.example.com:
+              db_name: catalog
+
+For larger inventories, use separate files next to the inventory:
+
+    inventory/
+      hosts.yml
+      group_vars/
+        all.yml
+        webservers.yml
+      host_vars/
+        web01.example.com.yml
+
+`group_vars/all.yml` applies to all inventory hosts. A file named after a
+group, such as `group_vars/webservers.yml`, applies to that group. A file
+named after a host, such as `host_vars/web01.example.com.yml`, applies to that
+host. These files usually contain YAML mappings:
+
+    # inventory/group_vars/webservers.yml
+    app_package: nginx
+    app_port: 8080
+
+3. In a role
+~~~~~~~~~~~~
+
+Role variables are declared in the role's `defaults/main.yml` or
+`vars/main.yml`:
+
+    roles/
+      webapp/
+        defaults/
+          main.yml
+        vars/
+          main.yml
+
+Put user-overridable settings in `defaults/main.yml`. Defaults have low
+precedence, so inventory or play variables can normally override them. Use
+`vars/main.yml` for role values that should be harder to override; avoid
+putting ordinary configuration there if users are expected to customize it.
+
+Example `roles/webapp/defaults/main.yml`:
+
+    webapp_port: 8080
+    webapp_package: nginx
+
+Use those variables when applying the role:
+
+    - name: Configure web servers
+      hosts: webservers
+      roles:
+        - role: webapp
+
+4. At the command line
+~~~~~~~~~~~~~~~~~~~~~~
+
+Extra variables are useful for one-off overrides or automation pipelines:
+
+    ansible-playbook -i inventory/hosts.yml site.yml -e "app_port=9090"
+
+For structured values, use JSON:
+
+    ansible-playbook site.yml -e '{"app_port": 9090, "app_enabled": true}'
+
+Extra variables have very high precedence and override most other variable
+sources. Do not use them to pass secrets where command history or process
+information could expose the value.
+
+5. Prompted, registered, and calculated variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`vars_prompt` asks for an input when a playbook starts. It is useful for
+interactive runs, but not usually suitable for unattended automation:
+
+    - name: Example of a prompted value
+      hosts: localhost
+      connection: local
+      vars_prompt:
+        - name: release_label
+          prompt: "Release label"
+          private: false
+      tasks:
+        - name: Show release label
+          ansible.builtin.debug:
+            var: release_label
+
+Use `register` to save a task's result for later tasks:
+
+    - name: Check whether the application config exists
+      ansible.builtin.stat:
+        path: /etc/myapp/config.yml
+      register: app_config_file
+
+    - name: Report the check result
+      ansible.builtin.debug:
+        msg: "Config exists: {{ app_config_file.stat.exists }}"
+
+Use `ansible.builtin.set_fact` to create a value during a play:
+
+    - name: Set a derived application URL
+      ansible.builtin.set_fact:
+        app_url: "https://{{ app_domain }}:{{ app_port }}"
+
+The value from `set_fact` is associated with the current host for the
+remainder of the play. Facts gathered from managed hosts are another source
+of variables; for example, `ansible_facts['distribution']` contains operating
+system distribution information when fact gathering is enabled.
+
+How to choose a location
+------------------------
+
+- Use role defaults for reusable, overridable role settings.
+- Use `group_vars` for settings shared by a group or environment.
+- Use `host_vars` only for values unique to one host.
+- Use playbook `vars` or `vars_files` for play-specific configuration.
+- Use extra variables for intentional run-time overrides.
+- Use Ansible Vault for passwords, tokens, and other secrets.
+
+Variable precedence
+-------------------
+
+The same variable can be defined in multiple places. Ansible resolves this
+using variable precedence: in general, more specific and higher-precedence
+sources override lower-precedence ones. Role defaults are among the lowest
+precedence sources, inventory and play variables override many defaults, and
+command-line extra variables are among the highest.
+
+Precedence has many levels and can be surprising, especially when combining
+inventory, role, task, and `set_fact` values. Avoid defining the same variable
+in several places unless the override is intentional. For exact ordering,
+consult Ansible's variable precedence documentation.
+
+Protect sensitive values
+------------------------
+
+Do not store passwords, API tokens, or private keys as plain text in a
+playbook, inventory, or source control. Use Ansible Vault to encrypt sensitive
+variable files, for example:
+
+    ansible-vault encrypt group_vars/production/vault.yml
+
+Load the encrypted file with `vars_files` or the appropriate inventory
+variable layout, then run the playbook with a Vault password prompt:
+
+    ansible-playbook -i inventory/hosts.yml site.yml --ask-vault-pass
+
+Keep Vault password files and other credentials out of source control and
+restrict access to them.
+
+
+
+
+
+
+
+
+
+
+
+
+
+Let's take a practical example of Ansible Group Variables (`group_vars`) using your Linux servers and the `httpd` role.
+
+Group variables let you assign configuration to a group of servers instead of defining the same variables separately for every host.
+
+## 1. Folder structure
+
+```
+ansible/
+├── inventory.ini
+├── http.yaml
+├── group_vars/
+│   ├── linux.yml
+│   └── db.yml
+└── roles/
+    └── httpd/
+        ├── defaults/main.yml
+        ├── tasks/main.yml
+        ├── handlers/main.yml
+        └── files/index.html
+```
+
+## 2. Define your inventory
+
+`inventory.ini`
+
+```
+[linux]
+web01 ansible_host=10.0.0.157
+web02 ansible_host=10.0.0.158
+
+[db]
+db01 ansible_host=10.0.0.159
+```
+
+Here, `web01` and `web02` belong to the `linux` group, while `db01` belongs to the `db` group.
+
+## 3. Create group variables
+
+Create the directory:
+
+```
+mkdir -p group_vars
+```
+
+Create `group_vars/linux.yml`:
+
+```
+---
+service_package: httpd
+service_name: httpd
+web_root: /var/www/html
+environment: development
+```
+
+Create `group_vars/db.yml`:
+
+```
+---
+service_package: mariadb-server
+service_name: mariadb
+environment: production
+```
+
+Ansible automatically loads `group_vars/linux.yml` for hosts in the `linux` group and `group_vars/db.yml` for hosts in the `db` group, provided the files are located relative to the inventory or playbook in the standard supported locations.
+
+## 4. Use group variables in your role
+
+In `roles/httpd/tasks/main.yml`:
+
+```
+---
+- name: Install Apache
+  ansible.builtin.dnf:
+    name: "{{ service_package }}"
+    state: present
+    update_cache: true
+
+- name: Start and enable Apache
+  ansible.builtin.service:
+    name: "{{ service_name }}"
+    state: started
+    enabled: true
+
+- name: Create web root
+  ansible.builtin.file:
+    path: "{{ web_root }}"
+    state: directory
+```
+
+Your role doesn't need to define these variables again. Ansible gets their values from the group variables.
+
+## 5. Run the playbook
+
+`http.yaml`:
+
+```
+---
+- name: Configure Linux web servers
+  hosts: linux
+  become: true
+  roles:
+    - httpd
+```
+
+Run:
+
+```
+ansible-playbook -i inventory.ini http.yaml
+```
+
+Only `web01` and `web02` are targeted because the playbook says `hosts: linux`.
+
+## 6. How group variables work
+
+Inventory: `linux` group
+
+web01 · web02
+
+`group_vars/linux.yml`
+
+service_package = httpd
+
+service_name = httpd
+
+HTTPD role runs on both servers
+
+## 7. Group variables vs. role defaults vs. host variables
+
+| Variable location               | Applies to                  | Example                    |
+| ------------------------------- | --------------------------- | -------------------------- |
+| `roles/httpd/defaults/main.yml` | Default values for the role | Default web root           |
+| `group_vars/linux.yml`          | All hosts in `linux`        | Apache package and service |
+| `host_vars/web01.yml`           | Only `web01`                | A server-specific port     |
+| Ansible Vault file              | Encrypted secrets           | Passwords and API keys     |
+
+Important: Group variables are not automatically higher precedence than role defaults. If the same variable is defined in both, group variables normally override role defaults.
+
+For your DevOps practice, a common pattern is to keep reusable defaults inside roles, environment-specific configuration in `group_vars`, and sensitive credentials in Ansible Vault.

@@ -1,0 +1,155 @@
+Let's learn how to create and use Ansible Vault on your Amazon Linux control node (`ip-10-0-0-190`).
+
+Ansible Vault encrypts sensitive information such as passwords, API keys, and database credentials so you don't store them as plain text in your Git repository.
+
+## 1. Create a new Vault file
+
+Go to your Ansible project directory:
+
+```
+cd /home/ec2-user/ansible
+```
+
+Create an encrypted file:
+
+```
+ansible-vault create secrets.yml
+```
+
+Ansible prompts you to enter and confirm a Vault password. This is the password used to unlock the encrypted file.
+
+Your editor opens. Add variables like these:
+
+```
+---
+vault_linux_password: "LinuxLab@2026"
+vault_db_username: "appuser"
+vault_db_password: "Database@2026"
+```
+
+Save and exit the editor. Ansible saves the file in encrypted form.
+
+## 2. View the encrypted file
+
+To view the decrypted contents without permanently decrypting the file:
+
+```
+ansible-vault view secrets.yml
+```
+
+Enter your Vault password when prompted.
+
+To check that the file is encrypted:
+
+```
+head -n 1 secrets.yml
+```
+
+You should see a header similar to:
+
+```
+$ANSIBLE_VAULT;1.1;AES256
+```
+
+## 3. Edit the Vault later
+
+```
+ansible-vault edit secrets.yml
+```
+
+Add or modify variables, then save and exit. Ansible keeps the file encrypted.
+
+## 4. Use Vault variables in a playbook
+
+For example, suppose you want to create a Linux user with a password stored in Vault.
+
+In `secrets.yml`:
+
+```
+---
+vault_app_password: "ChangeMe@2026"
+```
+
+In your playbook, `create-user.yml`:
+
+```
+---
+- name: Create application user
+  hosts: linux
+  become: true
+
+  vars_files:
+    - secrets.yml
+
+  tasks:
+    - name: Create appuser
+      ansible.builtin.user:
+        name: appuser
+        state: present
+```
+
+This example creates the user but does not set a password yet. For Linux password authentication, the `password` field normally needs a hashed password, not the plaintext value stored above. You can also use Vault for service credentials consumed directly by applications.
+
+Run the playbook:
+
+```
+ansible-playbook -i inventory.ini create-user.yml --ask-vault-pass
+```
+
+Alternatively, if you don't specify `vars_files` in the playbook, you can pass the vault file explicitly:
+
+```
+ansible-playbook -i inventory.ini create-user.yml \
+  -e @secrets.yml --ask-vault-pass
+```
+
+Use one approach as appropriate; you don't need both.
+
+## 5. Other useful Vault commands
+
+| Command                             | Purpose                            |
+| ----------------------------------- | ---------------------------------- |
+| `ansible-vault create secrets.yml`  | Create a new encrypted file        |
+| `ansible-vault view secrets.yml`    | View its contents                  |
+| `ansible-vault edit secrets.yml`    | Edit encrypted contents            |
+| `ansible-vault encrypt vars.yml`    | Encrypt an existing plaintext file |
+| `ansible-vault decrypt secrets.yml` | Permanently decrypt the file       |
+| `ansible-vault rekey secrets.yml`   | Change the Vault password          |
+
+## 6. Best practice for your project
+
+Keep your project structured like this:
+
+```
+ansible/
+├── inventory.ini
+├── http.yaml
+├── secrets.yml
+└── roles/
+    └── httpd/
+        ├── defaults/main.yml
+        ├── tasks/main.yml
+        ├── handlers/main.yml
+        └── files/index.html
+```
+
+- Put reusable configuration in role defaults.
+- Put automation steps in role tasks.
+- Put sensitive credentials in the encrypted Vault file.
+- Never commit plaintext passwords or Vault password files to Git.
+- Add `secrets.yml` to `.gitignore` if you don't intend to store the encrypted file in Git. Even encrypted secrets should be committed only according to your team's secret-management policy.
+
+Important: Keep your Vault password somewhere safe. If you lose it and have no backup, Ansible cannot decrypt the file.
+
+
+
+
+
+
+We can have a password file and call it to use this password for Vault
+
+create a encoded pass and push it in a file exampple vault.pass
+
+ansible-vault create /var/pass.yml --vault-password-file vault.pass
+
+so this will create a vault with the pass in that vault.pass file
