@@ -1,0 +1,26 @@
+---
+- name: "Policy as code S3 versoning enable"
+  hosts: localhost
+  connection: local
+
+  tasks:
+   - name: "List the Bucket"
+     amazon.aws.s3_bucket_info:
+       region: ap-south-1
+       access_key: "{{access_key}}"
+       secret_key: "{{screat_key}}"
+     register: buckets
+
+
+   - name: "display buckets"
+     ansible.builtin.debug:
+      var: buckets.buckets
+   
+   - name: "Enable versioning"
+     amazon.aws.s3_bucket:
+      name: "{{item.name}}"
+      versioning: true
+      region: ap-south-1
+      access_key: "{{access_key}}"
+      secret_key: "{{screat_key}}"
+     loop: "{{ buckets.buckets }}"   

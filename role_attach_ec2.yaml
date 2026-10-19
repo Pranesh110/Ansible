@@ -1,0 +1,42 @@
+---
+- name: "Role attachment policy as code"
+  hosts: Linux
+  gather_facts: true
+
+  tasks:
+    - name: "List the EC2 instance ID"
+      amazon.aws.ec2_metadata_facts:
+
+    - name: "Display the EC2 instance ID"
+      ansible.builtin.debug:
+        var: ansible_ec2_instance_id
+      
+
+- name: "Attach IAM role through AWS API"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  tasks:
+    
+    - name: Gather information about all EC2 instances
+      amazon.aws.ec2_instance_info:
+       region: ap-south-1
+       access_key: "{{access_key}}"
+       secret_key: "{{screat_key}}"
+      register: ec2_details
+
+    - name: "display buckets"
+      ansible.builtin.debug:
+       msg: "{{ ec2_details.instances | map(attribute='instance_id') | list }}"
+    - name: "Attach existing IAM instance profile"
+      amazon.aws.ec2_instance:
+        instance_ids:
+          - "{{ item.instance_id }}"
+        region: ap-south-1
+        iam_instance_profile: "s3-access"
+        state: present
+        access_key: "{{ access_key }}"
+        secret_key: "{{ screat_key }}"
+      loop: "{{ ec2_details.instances }}"
+      when: item.instance_id.endswith('4c') or item.instance_id.endswith('1c') #to match only manage node
